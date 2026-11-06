@@ -1,0 +1,167 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Tickstream</title>
+  <meta name="description" content="Live crypto trades streamed through Kafka and Apache Spark Structured Streaming.">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%23161B2B'/%3E%3Cpath d='M4 19h6l3-9 5 14 3-7h7' fill='none' stroke='%23F2B544' stroke-width='2.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Condensed:wght@500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <header class="top">
+    <div class="brand">
+      <svg viewBox="0 0 32 32" aria-hidden="true"><path d="M4 19h6l3-9 5 14 3-7h7"/></svg>
+      <div>
+        <h1>Tickstream</h1>
+        <p>Live crypto trades, processed by Kafka and Spark as they happen</p>
+      </div>
+    </div>
+    <div class="status" aria-live="polite">
+      <span class="conn" id="conn" data-state="connecting"><i aria-hidden="true"></i><span>Connecting</span></span>
+      <span class="source" id="source">Coinbase live feed</span>
+      <time id="clock">--:--:-- UTC</time>
+    </div>
+  </header>
+
+  <main>
+    <section class="pipeline" aria-labelledby="pipe-title">
+      <div class="pipe-intro">
+        <h2 id="pipe-title">The pipeline, right now</h2>
+        <p>Every moving dot is real data: trades landing in Kafka, a Spark micro-batch finishing, fresh numbers reaching this page.</p>
+      </div>
+
+      <div class="pipe-grid" id="pipe">
+        <svg class="wires" id="wires" aria-hidden="true"></svg>
+
+        <article class="node" data-node="feed">
+          <h3>Exchange feed</h3>
+          <p class="what" id="feed-what">Coinbase WebSocket</p>
+          <p class="big"><span id="feed-rate">–</span></p>
+          <p class="sub">trades per second</p>
+        </article>
+
+        <article class="node" data-node="kafka">
+          <h3>Kafka</h3>
+          <p class="what">topic crypto-trades</p>
+          <p class="big"><span id="kafka-total">–</span></p>
+          <p class="sub">messages stored</p>
+          <ul class="partitions" id="partitions" aria-label="Messages per partition"></ul>
+        </article>
+
+        <article class="node" data-node="spark">
+          <h3>Spark Structured Streaming</h3>
+          <p class="what">3 queries, event-time windows</p>
+          <p class="big"><span id="spark-rate">–</span></p>
+          <p class="sub">rows per second processed</p>
+          <dl class="queries" id="queries"></dl>
+        </article>
+
+        <article class="node" data-node="lake">
+          <h3>Parquet data lake</h3>
+          <p class="what">raw trades, by coin and date</p>
+          <p class="big"><span id="lake-size">–</span></p>
+          <p class="sub" id="lake-files">files</p>
+        </article>
+
+        <article class="node" data-node="db">
+          <h3>Serving database</h3>
+          <p class="what">candles, averages, alerts</p>
+          <p class="big"><span id="db-candles">–</span></p>
+          <p class="sub" id="db-alerts">candles computed</p>
+        </article>
+
+        <article class="node" data-node="web">
+          <h3>This page</h3>
+          <p class="what">FastAPI over WebSocket</p>
+          <p class="big"><span id="web-latency">–</span></p>
+          <p class="sub">exchange to screen</p>
+          <p class="sub" id="web-seen">0 trades received</p>
+        </article>
+      </div>
+    </section>
+
+    <section class="market" aria-label="Market">
+      <div class="coins" id="coins" role="tablist" aria-label="Choose a coin"></div>
+
+      <div class="market-grid">
+        <div class="panel chart-panel">
+          <div class="panel-head">
+            <div>
+              <h2 id="chart-title">Price</h2>
+              <p class="readout" id="readout">Waiting for the first candle</p>
+            </div>
+            <div class="ranges" role="group" aria-label="Time range">
+              <button type="button" data-min="30">30m</button>
+              <button type="button" data-min="60" aria-pressed="true">1h</button>
+              <button type="button" data-min="180">3h</button>
+              <button type="button" data-min="720">12h</button>
+            </div>
+          </div>
+          <div class="legend" id="chart-legend">
+            <span><i class="sw candle" aria-hidden="true"></i>1-minute candles</span>
+            <span><i class="sw line" aria-hidden="true"></i>5-minute moving average</span>
+            <span><i class="sw live" aria-hidden="true"></i>Live price</span>
+            <span><i class="sw marker" aria-hidden="true">▲</i>Spike alert</span>
+          </div>
+          <div class="chart" id="price-chart"></div>
+          <p class="empty" id="chart-empty" hidden>No candles yet. Spark closes its first 1-minute window about 10 seconds after trades start flowing.</p>
+        </div>
+
+        <aside class="panel tape-panel">
+          <div class="panel-head">
+            <div>
+              <h2>Trades as they arrive</h2>
+              <p class="readout">Read straight from Kafka, before Spark touches them</p>
+            </div>
+          </div>
+          <ol class="tape" id="tape" aria-label="Latest trades"></ol>
+        </aside>
+      </div>
+
+      <div class="lower-grid">
+        <div class="panel">
+          <div class="panel-head">
+            <div>
+              <h2>Volatility</h2>
+              <p class="readout">Std-dev of price over 5 minutes, as a % of the average</p>
+            </div>
+          </div>
+          <div class="legend" id="vol-legend"></div>
+          <div class="chart small" id="vol-chart"></div>
+        </div>
+
+        <div class="panel">
+          <div class="panel-head">
+            <div>
+              <h2>Spark throughput</h2>
+              <p class="readout" id="tp-readout">Kafka events per second into the candles query</p>
+            </div>
+          </div>
+          <div class="chart small" id="tp-chart"></div>
+        </div>
+
+        <div class="panel">
+          <div class="panel-head">
+            <div>
+              <h2>Spike alerts</h2>
+              <p class="readout" id="alert-rule">Any 1-minute move of 0.5% or more</p>
+            </div>
+          </div>
+          <ol class="alerts" id="alerts"></ol>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <p>Apache Kafka, Apache Spark Structured Streaming, Parquet, SQLite and FastAPI, running in Docker. Market data from the Coinbase public feed. Charts by TradingView Lightweight Charts.</p>
+  </footer>
+
+  <script src="vendor/lightweight-charts.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
